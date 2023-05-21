@@ -120,7 +120,7 @@ def upload():
                 return "ok"
             
             #compress the plugin
-            if compressPlugin() is False:
+            if compressPlugin(brand, name) is False:
                 socketio.emit('response', {'data': 'Failed to compress plugin', 'type': 'error'})
                 return "ok"
 
@@ -162,13 +162,18 @@ def prepareDirectory(directory):
                 except Exception as e:
                     socketio.emit('response', {'data': 'Failed to delete %s. Reason: %s' % (file_path, e), type: 'error'})
 
-def compressPlugin():
+def compressPlugin(brand, name):
     #build the plugin
+    exportPath = '/home/modgen/mod-plugin-builder/max-gen-plugins/bin/max-gen-plugin.lv2'
     socketio.emit('response', {'data': 'Compressing Plugin'})
-    if not os.path.exists('/home/modgen/mod-plugin-builder/max-gen-plugins/bin/max-gen-plugin.lv2'):
+    if not os.path.exists(exportPath):
         socketio.emit('response', {'data': 'Plugin not found', 'type': 'error'})
         return False
-    command = 'tar zhcf max-gen-plugin.tar.gz max-gen-plugin.lv2'
+    #rename the plugin
+    pluginName = snakecase(brand)+'-'+snakecase(name)+'.lv2'
+    pluginPath = '/home/modgen/mod-plugin-builder/max-gen-plugins/bin/'+pluginName
+    os.rename(exportPath, pluginPath)
+    command = 'tar zhcf max-gen-plugin.tar.gz '+pluginName
     try:
         process = subprocess.Popen(
             shlex.split(command),
