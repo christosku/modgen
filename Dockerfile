@@ -19,12 +19,12 @@ RUN git clone https://github.com/moddevices/mod-plugin-builder/
 
 WORKDIR /home/modgen/mod-plugin-builder
 
-ARG INSTALL_MODDUOX=true
+ARG INSTALL_MODDUOX=false
 RUN if [ ${INSTALL_MODDUOX} = true ]; then \
     ./bootstrap.sh modduox-static minimal \
 ;fi
 
-ARG INSTALL_MODDWARF=true
+ARG INSTALL_MODDWARF=false
 RUN if [ ${INSTALL_MODDWARF} = true ]; then \
     ./bootstrap.sh moddwarf minimal \
 ;fi
