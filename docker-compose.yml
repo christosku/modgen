@@ -1,0 +1,12 @@
+services:
+  modgen:
+    build: .
+    env:
+      - INSTALL_MODDUOX=${MODGEN_INSTALL_MODDUOX}
+      - INSTALL_MODDWARF=${MODGEN_INSTALL_MODDWARF}
+    ports:
+      - "${MODGEN_SERVER_PORT}:5000"
+    working_dir: /home/modgen/server/source
+    entrypoint: [ "python", "server.py"]
+    volumes:
+      - ./source:/home/modgen/server/source
