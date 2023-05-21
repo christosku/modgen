@@ -7,7 +7,7 @@
 - Clone this repository: `git clone https://github.com/christosku/modgen.git`
 - Copy `.env.example` to `.env`
 - Modify `.env` according to your needs. By default it will boostrap both **modduox** and **moddwarf** but you can disable whichever you don't need. You can also change the exposed port to something else
-- Run `docker compose up -d modgen`. It will take some time the first time you run it, but should be almost instant from then on
+- Run `docker compose up -d modgen`. It will take some time the first time you run it, but should be almost instantaneous from then on
 - Once it's up and running, visit http://127.0.0.1:5000 in your browser.
 
 ### Usage
