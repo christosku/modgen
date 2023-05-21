@@ -15,7 +15,7 @@
                 <form method="post" id="upload-form" action="/" enctype="multipart/form-data">
                     <div class="mb-3">
                         <label for="files" class="form-label">Plugin files</label>
-                        <input type="file" class="form-control" name="files[]" id="files" accept=".h,.cpp" multiple>
+                        <input type="file" class="form-control" name="files[]" id="files" accept=".h,.cpp" multiple required>
                     </div>
                     <div class="mb-3">
                         <label for="name" class="form-label">Plugin name</label>
@@ -28,7 +28,7 @@
                     <div class="mb-3">
                         <label for="category" class="form-label">Plugin category</label>
                         <select name="category" class="form-select" id="category">
-                            {% for i in range(0,len) %}
+                            {% for i in range(0,categoryLength) %}
                             <option value="{{pluginCategories[i]}}"
                                     {% if pluginCategories[i] == category %} selected {%endif%}>
                                 {{pluginCategories[i]}}
@@ -38,7 +38,22 @@
                     </div>
                     <div class="mb-3">
                         <label for="uri" class="form-label">Plugin URI</label>
-                        <input type="text" class="form-control" name="uri" value="{{uri}}" id="uri" placeholder="Plugin URI">
+                        <input type="text" class="form-control" name="uri" value="{{uri}}" id="uri" placeholder="Plugin URI" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="device" class="form-label">Device</label>
+                        <select name="device" class="form-select" id="device">
+                            {% for i in range(0,deviceLength) %}
+                            <option value="{{deviceList[i]}}"
+                                    {% if deviceList[i] == device %} selected {%endif%}>
+                                {{deviceList[i]}}
+                            </option>
+                            {%endfor%}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="ip" class="form-label">Device ip</label>
+                        <input type="text" class="form-control" name="ip" value="{{ip}}" id="ip" placeholder="Device ip" required>
                     </div>
                     <div class="mb-3 form-check">
                         <input class="form-check-input" type="checkbox" value="" id="save-settings">
@@ -63,28 +78,36 @@
     <script>
         function uploadToDevice(data) {
             const formData = new FormData();
+            ip = $('#ip').val();
             formData.append('package', new File([data], '-'));
-            fetch('http://192.168.51.1/sdk/install', {
+            fetch('http://'+ip+'/sdk/install', {
                 method: 'POST',
                 mode: 'no-cors',
                 body: formData
             }).then((response) => {
-                console.log(response);
-                response.json().then((data) => {
-                    console.log(data);
-                });
+                $('#log').append('<div class="mb-1 text-white">✓ Plugin should have been uploaded to device</div>');
+            }).catch((error) => {
+                $('#log').append('<div class="mb-1 text-danger">✗ ' + error.message + '. Is your device connected and reachable?</div>');
             });
         }
 
         $(document).ready(function(){
             var socket = io();
             socket.on('response', function(msg) {
-                if (msg.type == 'success') {
-                    $('#log').append('<div class="mb-1 text-white">✓ ' + msg.data + '</div>');
-                } else if (msg.type == 'plugin') {
-                    uploadToDevice(msg.data);
-                } else {
-                    $('#log').append('<div class="mb-1"><small>' + msg.data + '</small></div>');
+                switch (msg.type) {
+                    case 'error':
+                        $('#log').append('<div class="mb-1 text-danger">✗ ' + msg.data + '</div>');
+                        break;
+                    case 'success':
+                        $('#log').append('<div class="mb-1 text-white">✓ ' + msg.data + '</div>');
+                        break;
+                    case 'plugin':
+                        $('#log').append('<div class="mb-1 text-white">✓ Trying to upload to device...</div>');
+                        uploadToDevice(msg.data);
+                        break;
+                    default:
+                        $('#log').append('<div class="mb-1"><small>' + msg.data + '</small></div>');
+                        break;
                 }
                 $('#log').parent().animate({scrollTop: $('#log')[0].scrollHeight}, 200);
             });
@@ -99,6 +122,8 @@
             formData.append('brand', $('#brand').val());
             formData.append('category', $('#category').val());
             formData.append('uri', $('#uri').val());
+            formData.append('device', $('#device').val());
+            formData.append('ip', $('#ip').val());
             formData.append('save-settings', $('#save-settings').is(':checked'));
             for (const file of fileInput.files) {
                 formData.append('files', file);

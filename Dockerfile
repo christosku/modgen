@@ -18,7 +18,17 @@ WORKDIR /home/modgen
 RUN git clone https://github.com/moddevices/mod-plugin-builder/
 
 WORKDIR /home/modgen/mod-plugin-builder
-RUN ./bootstrap.sh modduox-static minimal
+
+ARG INSTALL_MODDUOX=true
+RUN if [ ${INSTALL_MODDUOX} = true ]; then \
+    ./bootstrap.sh modduox-static minimal \
+;fi
+
+ARG INSTALL_MODDWARF=true
+RUN if [ ${INSTALL_MODDWARF} = true ]; then \
+    ./bootstrap.sh moddwarf minimal \
+;fi
+
 
 RUN git clone https://github.com/moddevices/max-gen-plugins/
 

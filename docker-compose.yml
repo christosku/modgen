@@ -1,7 +1,8 @@
+version: '3.3'
 services:
   modgen:
     build: .
-    env:
+    environment:
       - INSTALL_MODDUOX=${MODGEN_INSTALL_MODDUOX}
       - INSTALL_MODDWARF=${MODGEN_INSTALL_MODDWARF}
     ports:

@@ -1,7 +1,6 @@
 #create a web server using flask
 from flask import Flask, request, render_template
 from flask_socketio import SocketIO, emit, send
-from flask_cors import CORS, cross_origin
 from caseconverter import snakecase
 import configparser
 import sys
@@ -18,11 +17,6 @@ app.config['TEMPLATES_AUTO_RELOAD'] = True
 socketio = SocketIO(app)
 
 config = configparser.ConfigParser()
-config.read('settings.ini')
-name = config['Default']['name']
-brand = config['Default']['brand']
-uri = config['Default']['uri']
-category = config['Default']['category']
 
 pluginCategories = [
     "DelayPlugin",
@@ -44,23 +38,31 @@ acceptedFilenames = [
     'gen_exported.h'
 ]
 
+deviceList = [
+    'modduox',
+    'moddwarf'
+]
+
 @app.route("/", methods=["GET"])
-@cross_origin()
 def upload_page():
     return render_template(
                             "index.html", 
-                            len = len(pluginCategories), 
+                            categoryLength = len(pluginCategories), 
                             pluginCategories = pluginCategories,
                             name = name,
                             brand = brand,
                             uri = uri,
-                            category = category
+                            category = category,
+                            deviceLength = len(deviceList),
+                            deviceList = deviceList,
+                            device = device,
+                            ip = ip
                            )
 
 #create a route that accepts POST requests with file uploads and saves them to disk
 @app.route("/", methods=["POST"])
-@cross_origin()
 def upload():
+    global name, brand, uri, category, device, ip
     if request.method == "POST":
         if request.files:
             filenames = []
@@ -68,7 +70,7 @@ def upload():
             
             #check if we received exactly 2 files
             if len(uploaded_files) != 2:
-                socketio.emit('response', {'data': 'You must upload exactly 2 files'})
+                socketio.emit('response', {'data': 'You must upload exactly 2 files: <strong>gen_exported.cpp</strong> and <strong>gen_exported.h</strong>'})
                 return "ok"
             
             rootDirectory = "/home/modgen/mod-plugin-builder/max-gen-plugins/"
@@ -82,18 +84,25 @@ def upload():
                 #check if the file has one of the accepted filenames
                 if file.filename not in acceptedFilenames:
                     socketio.emit('response', {'data': 'Invalid filename: '+file.filename})
+                    socketio.emit('response', {'data': 'Required filenames: '+str(acceptedFilenames)})
                     return "ok"
                     
                 file.save(directory+file.filename)
             socketio.emit('response', {'data': 'Files uploaded successfully', 'type': 'success'})
             socketio.emit('response', {'data': 'Modifying Distrho Plugin Info', 'type': 'success'})
 
-            #modify the plugin info
+            #get the settings from the post form
             name = request.form.get('name')
             brand = request.form.get('brand')
             uri = request.form.get('uri')
             category = request.form.get('category')
+            device = request.form.get('device')
+            ip = request.form.get('ip')
 
+            if request.form.get('save-settings') == 'true':
+                saveSettings()
+
+            #modify the plugin info
             with open('DistrhoPluginInfo.h', 'r') as infoFile:
                 filedata = infoFile.read()
                 filedata = filedata.replace('@brand@', brand)
@@ -101,28 +110,26 @@ def upload():
                 filedata = filedata.replace('@uri@', uri)
                 filedata = filedata.replace('@category@', 'lv2:'+category)
 
-            # Write the file out again
+            #write the file out again
             with open(directory+'DistrhoPluginInfo.h', 'w') as infoFile:
                 infoFile.write(filedata)
 
             #build the plugin
-            buildPlugin('modduox')
+            if buildPlugin(device) is False:
+                socketio.emit('response', {'data': 'Failed to build plugin', 'type': 'error'})
+                return "ok"
             
             #compress the plugin
-            compressPlugin()
+            if compressPlugin() is False:
+                socketio.emit('response', {'data': 'Failed to compress plugin', 'type': 'error'})
+                return "ok"
 
-            getBase64()
-
-                
-            if request.form.get('save-settings') == 'true':
-                config['Default']['name'] = name
-                config['Default']['brand'] = brand
-                config['Default']['uri'] = uri
-                config['Default']['category'] = category
-                with open('settings.ini', 'w') as configfile:
-                    config.write(configfile)
+            if getBase64() is False:
+                socketio.emit('response', {'data': 'Failed to get base64', 'type': 'error'})
+                return "ok"
+            
         else:
-            socketio.emit('response', {'data': 'No files were selected'})
+            socketio.emit('response', {'data': 'No files were selected', 'type': 'error'})
         return "ok"
     else:
         return "not a post request"
@@ -153,36 +160,59 @@ def prepareDirectory(directory):
                     elif os.path.isdir(file_path):
                         shutil.rmtree(file_path)
                 except Exception as e:
-                    socketio.emit('response', {'data': 'Failed to delete %s. Reason: %s' % (file_path, e)})
+                    socketio.emit('response', {'data': 'Failed to delete %s. Reason: %s' % (file_path, e), type: 'error'})
 
 def compressPlugin():
     #build the plugin
     socketio.emit('response', {'data': 'Compressing Plugin'})
+    if not os.path.exists('/home/modgen/mod-plugin-builder/max-gen-plugins/bin/max-gen-plugin.lv2'):
+        socketio.emit('response', {'data': 'Plugin not found', 'type': 'error'})
+        return False
     command = 'tar zhcf max-gen-plugin.tar.gz max-gen-plugin.lv2'
     try:
         process = subprocess.Popen(
             shlex.split(command),
             shell=False, 
             stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             cwd=r'/home/modgen/mod-plugin-builder/max-gen-plugins/bin'
             )
     except:
-        socketio.emit('response', {'data': 'ERROR {} while running {}'.format(sys.exc_info()[1], command)})
+        socketio.emit('response', {'data': 'ERROR {} while running {}'.format(sys.exc_info()[1], command), 'type': 'error'})
         return False
     while True:
         output = process.stdout.readline()
+        errors = process.stderr.readline()
         if process.poll() is not None:
             break
         if output:
             socketio.emit('response', {'data': output.strip().decode(), 'type': 'info'})
+        if errors:
+            socketio.emit('response', {'data': errors.strip().decode(), 'type': 'error'})
+            return False
     socketio.emit('response', {'data': 'Plugin compressed successfully', 'type': 'success'})
+    return True
 
 #convert the tar to base64 and send it to the client
 
 def getBase64():
+    if not os.path.exists('/home/modgen/mod-plugin-builder/max-gen-plugins/bin/max-gen-plugin.tar.gz'):
+        socketio.emit('response', {'data': 'Compressed plugin file not found', 'type': 'error'})
+        return False
     with open('/home/modgen/mod-plugin-builder/max-gen-plugins/bin/max-gen-plugin.tar.gz', 'rb') as file:
         encoded = base64.encodebytes(file.read()).decode('utf-8')
         socketio.emit('response', {'data': encoded, 'type': 'plugin'})
+    return True
+
+def saveSettings():
+    config['Default']['name'] = name
+    config['Default']['brand'] = brand
+    config['Default']['uri'] = uri
+    config['Default']['category'] = category
+    config['Default']['device'] = device
+    config['Default']['ip'] = ip
+    with open('settings.ini', 'w') as configfile:
+        config.write(configfile)
 
 def buildPlugin(target):
     #build the plugin
@@ -193,18 +223,43 @@ def buildPlugin(target):
             shlex.split(command),
             shell=False, 
             stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             cwd=r'/home/modgen/mod-plugin-builder/max-gen-plugins/'
             )
     except:
-        socketio.emit('response', {'data': 'ERROR {} while running {}'.format(sys.exc_info()[1], command)})
+        socketio.emit('response', {'data': 'ERROR {} while running {}'.format(sys.exc_info()[1], command), 'type': 'error'})
         return False
     while True:
         output = process.stdout.readline()
+        errors = process.stderr.readline()
         if process.poll() is not None:
             break
         if output:
             socketio.emit('response', {'data': output.strip().decode(), 'type': 'build'})
+        if errors:
+            socketio.emit('response', {'data': errors.strip().decode(), 'type': 'error'})
+            return False
     socketio.emit('response', {'data': 'Plugin built successfully', 'type': 'success'})
+    return True
+
+#if the settings.ini file does not exist, create it with some default values
+if not os.path.exists('settings.ini'):
+    config['Default'] = {}
+    name='ExampleName'
+    brand='ExampleBrand'
+    uri='http://example.com/example'
+    category='UtilityPlugin'
+    device='modduox'
+    ip='192.168.51.1'
+    saveSettings()
+else:
+    config.read('settings.ini')
+    name = config['Default']['name']
+    brand = config['Default']['brand']
+    uri = config['Default']['uri']
+    category = config['Default']['category']
+    device = config['Default']['device']
+    ip = config['Default']['ip']
 
 if __name__ == "__main__":
     print('Starting server...')
