@@ -265,8 +265,8 @@ if not os.path.exists('settings.ini'):
     category='UtilityPlugin'
     device='modduox'
     ip='192.168.51.1'
-    inputs=2
-    outputs=2
+    inputs='2'
+    outputs='2'
     saveSettings()
 else:
     config.read('settings.ini')
