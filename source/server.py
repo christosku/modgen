@@ -56,7 +56,9 @@ def upload_page():
                             deviceLength = len(deviceList),
                             deviceList = deviceList,
                             device = device,
-                            ip = ip
+                            ip = ip,
+                            inputs = inputs,
+                            outputs = outputs
                            )
 
 #create a route that accepts POST requests with file uploads and saves them to disk
@@ -98,6 +100,8 @@ def upload():
             category = request.form.get('category')
             device = request.form.get('device')
             ip = request.form.get('ip')
+            inputs = request.form.get('inputs')
+            outputs = request.form.get('outputs')
 
             if request.form.get('save-settings') == 'true':
                 saveSettings()
@@ -109,6 +113,8 @@ def upload():
                 filedata = filedata.replace('@name@', name)
                 filedata = filedata.replace('@uri@', uri)
                 filedata = filedata.replace('@category@', 'lv2:'+category)
+                filedata = filedata.replace('@inputs@', inputs)
+                filedata = filedata.replace('@outputs@', outputs)
 
             #write the file out again
             with open(directory+'DistrhoPluginInfo.h', 'w') as infoFile:
@@ -216,6 +222,9 @@ def saveSettings():
     config['Default']['category'] = category
     config['Default']['device'] = device
     config['Default']['ip'] = ip
+    config['Default']['inputs'] = inputs
+    config['Default']['outputs'] = outputs
+
     with open('settings.ini', 'w') as configfile:
         config.write(configfile)
 
@@ -256,6 +265,8 @@ if not os.path.exists('settings.ini'):
     category='UtilityPlugin'
     device='modduox'
     ip='192.168.51.1'
+    inputs=2
+    outputs=2
     saveSettings()
 else:
     config.read('settings.ini')
@@ -265,6 +276,8 @@ else:
     category = config['Default']['category']
     device = config['Default']['device']
     ip = config['Default']['ip']
+    inputs = config['Default'].get('inputs','2')
+    outputs = config['Default'].get('outputs','2')
 
 if __name__ == "__main__":
     print('Starting server...')
