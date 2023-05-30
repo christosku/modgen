@@ -121,6 +121,35 @@
                 }
                 $('#log').parent().animate({scrollTop: $('#log')[0].scrollHeight}, 200);
             });
+
+            $("#files").click(function(){
+                $(this).val("");
+            });
+
+            $("#files").change(function(){
+                var files = $('#files')[0].files;
+                for (var i = 0; i < files.length; i++) {
+                    if (files[i].name == 'gen_exported.cpp') {
+                        var reader = new FileReader();
+                        reader.readAsText(files[i], "UTF-8");
+                        reader.onload = function (evt) {
+                            var content = evt.target.result;
+                            //Regex to get the number of inputs and outputs
+                            var regexIn = /int gen_kernel_numins = (\d);/gm;
+                            var regexOut = /int gen_kernel_numouts = (\d);/gm;
+                            var inputs = regexIn.exec(content);
+                            var outputs = regexOut.exec(content);
+                            if (inputs != null && outputs != null) {
+                                $('#log').append('<div class="mb-1 text-white">✓ Plugin has ' + inputs[1] + ' inputs and ' + outputs[1] + ' outputs</div>');
+                                $('#inputs').val(inputs[1]);
+                                $('#outputs').val(outputs[1]);
+                            } else {
+                                $('#log').append('<div class="mb-1 text-danger">✗ Could not automatically detect the number of inputs and outputs :(</div>');
+                            }
+                        }
+                    }
+                }
+            });
         });
 
         $( "#upload-form" ).on( "submit", function( event ) {
