@@ -21,12 +21,12 @@ WORKDIR /home/modgen/mod-plugin-builder
 
 ARG INSTALL_MODDUOX=false
 RUN if [ ${INSTALL_MODDUOX} = true ]; then \
-    ./bootstrap.sh modduox-static minimal \
+    ./bootstrap.sh modduox-new minimal \
 ;fi
 
 ARG INSTALL_MODDWARF=false
 RUN if [ ${INSTALL_MODDWARF} = true ]; then \
-    ./bootstrap.sh moddwarf minimal \
+    ./bootstrap.sh moddwarf-new minimal \
 ;fi
 
 
@@ -36,18 +36,25 @@ WORKDIR /home/modgen/mod-plugin-builder/max-gen-plugins
 RUN sed -i 's/git@github.com\:/https\:\/\/github.com\//' .gitmodules
 RUN git submodule update --init --recursive
 
+
+WORKDIR /home/modgen/mod-plugin-builder
+RUN git clone https://github.com/christosku/max-rnbo-plugins/
+
+WORKDIR /home/modgen/mod-plugin-builder/max-rnbo-plugins
+RUN git submodule update --init --recursive
+
 USER root
 RUN apt-get install -y python3-pip
 
 USER modgen
 RUN mkdir -p /home/modgen/server
 WORKDIR /home/modgen/server
-# RUN mkdir -p /home/modgen/server/source
 COPY requirements.txt /home/modgen/server
-# COPY server.py /home/modgen/server
-# COPY settings.ini /home/modgen/server
-# COPY index.html /home/modgen/server
-# COPY source/DistrhoPluginInfo.h /home/modgen/server/source
 RUN pip3 install -r requirements.txt
+
+COPY dpf.patch /home/modgen/server
+RUN patch /home/modgen/mod-plugin-builder/max-rnbo-plugins/dpf/Makefile.base.mk dpf.patch
+RUN patch /home/modgen/mod-plugin-builder/max-gen-plugins/dpf/Makefile.base.mk dpf.patch
+
 
 # CMD ["python", "server.py"]
