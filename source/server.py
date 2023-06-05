@@ -9,6 +9,9 @@ import shutil
 import subprocess
 import shlex
 import base64
+import re
+import json
+
 
 app = Flask(__name__)
 
@@ -33,9 +36,14 @@ pluginCategories = [
     "UtilityPlugin"
 ]
 
-acceptedFilenames = [
+acceptedGenFilenames = [
     'gen_exported.cpp',
     'gen_exported.h'
+]
+
+acceptedRnboFilenames = [
+    'rnbo_source.cpp',
+    'description.json'
 ]
 
 deviceList = [
@@ -66,32 +74,73 @@ def upload_page():
 def upload():
     global name, brand, uri, category, device, ip
     if request.method == "POST":
+        type = None
         if request.files:
             filenames = []
             uploaded_files = request.files.getlist("files")
             
             #check if we received exactly 2 files
             if len(uploaded_files) != 2:
-                socketio.emit('response', {'data': 'You must upload exactly 2 files: <strong>gen_exported.cpp</strong> and <strong>gen_exported.h</strong>'})
+                socketio.emit('response', {
+                    'data': '''You must upload exactly 2 files: <strong>gen_exported.cpp</strong> and <strong>gen_exported.h</strong> for Gen or <strong>rnbo_source.cpp</strong> and <strong>description.json</strong> for RNBO'''})
                 return "ok"
             
-            rootDirectory = "/home/modgen/mod-plugin-builder/max-gen-plugins/"
+            #detect if the files are Gen or RNBO
+            for file in uploaded_files:
+                filenames.append(file.filename)
+                if 'gen_exported.cpp' in filenames:
+                    type = 'gen'
+                    break
+                elif 'rnbo_source.cpp' in filenames:
+                    type = 'rnbo'
+                    break
+            if type:
+                socketio.emit('response', {'data': 'Detected Plugin type: ' +type})
+            else:
+                socketio.emit('response', {'data': 'Could not detect plugin type', 'type': 'error'})
+                return "ok"
+            
+            
+            rootDirectory = "/home/modgen/mod-plugin-builder/max-"+type+"-plugins/"
             prepareDirectory(rootDirectory)
             #create a new folder to save the files
-            directory = rootDirectory+'plugins/max-gen-plugin/'
+            directory = rootDirectory+'plugins/max-'+type+'-plugin/'
             if not os.path.exists(directory):
                 os.makedirs(directory)
                 
             for file in uploaded_files:
                 #check if the file has one of the accepted filenames
-                if file.filename not in acceptedFilenames:
+                if (type == 'gen' and file.filename not in acceptedGenFilenames) or (type == 'rnbo' and file.filename not in acceptedRnboFilenames):
                     socketio.emit('response', {'data': 'Invalid filename: '+file.filename})
-                    socketio.emit('response', {'data': 'Required filenames: '+str(acceptedFilenames)})
                     return "ok"
-                    
+
+                if file.filename == 'gen_exported.cpp':
+                    #get the inputs and outputs from the gen_exported.cpp file
+                    filedata = file.stream.read().decode('utf-8')
+                    file.stream.seek(0)
+                    inputs = re.search('int gen_kernel_numins = (\d+);', filedata).group(1)
+                    outputs = re.search('int gen_kernel_numouts = (\d+);', filedata).group(1)
+                    socketio.emit('response', {'data': 'Detected '+inputs+' inputs and '+outputs+' outputs'})
+                elif file.filename == 'description.json':
+                    #get the inputs and outputs from the rnbo description json file
+                    filedata = file.stream.read().decode('utf-8')
+                    file.stream.seek(0)
+                    #parse the json
+                    rnboData = json.loads(filedata)
+                    inputs = rnboData['numInputChannels']
+                    outputs = rnboData['numOutputChannels']
+                    midiInputs = rnboData['numMidiInputPorts']
+                    midiOutputs = rnboData['numMidiOutputPorts']
+                    cvPorts = []
+                    find_cv_ports(rnboData['inlets'], cvPorts)
+                    find_cv_ports(rnboData['outlets'], cvPorts)
                 file.save(directory+file.filename)
+
+                
+
             socketio.emit('response', {'data': 'Files uploaded successfully', 'type': 'success'})
             socketio.emit('response', {'data': 'Modifying Distrho Plugin Info', 'type': 'success'})
+
 
             #get the settings from the post form
             name = request.form.get('name')
@@ -100,8 +149,6 @@ def upload():
             category = request.form.get('category')
             device = request.form.get('device')
             ip = request.form.get('ip')
-            inputs = request.form.get('inputs')
-            outputs = request.form.get('outputs')
 
             if request.form.get('save-settings') == 'true':
                 saveSettings()
@@ -113,24 +160,47 @@ def upload():
                 filedata = filedata.replace('@name@', name)
                 filedata = filedata.replace('@uri@', uri)
                 filedata = filedata.replace('@category@', 'lv2:'+category)
-                filedata = filedata.replace('@inputs@', inputs)
-                filedata = filedata.replace('@outputs@', outputs)
+                filedata = filedata.replace('@inputs@', str(inputs))
+                filedata = filedata.replace('@outputs@', str(outputs))
+                if type == 'rnbo':
+                    filedata = filedata.replace('@isrnboplugin@', '1')
+                    if midiInputs > 0:
+                        filedata = filedata.replace('@midiinput@', '1')
+                    else:
+                        filedata = filedata.replace('@midiinput@', '0')
+                    if midiOutputs > 0:
+                        filedata = filedata.replace('@midioutput@', '1')
+                    else:
+                        filedata = filedata.replace('@midioutput@', '0')
+                    if len(cvPorts) > 0:
+                        filedata = filedata.replace('@cvports@', '{'+','.join(str(cvPort) for cvPort in cvPorts)+'}')
+                    else:
+                        filedata = filedata.replace('@cvports@', '{}')
+
+                else:
+                    filedata = filedata.replace('@isrnboplugin@', '0')
+                    filedata = filedata.replace('@midiinput@', '0')
+                    filedata = filedata.replace('@midioutput@', '0')
+                    filedata = filedata.replace('@cvports@', '{}')
+
 
             #write the file out again
             with open(directory+'DistrhoPluginInfo.h', 'w') as infoFile:
                 infoFile.write(filedata)
 
+            socketio.emit('response', {'data': 'Distrho Plugin Info modified successfully', 'type': 'success'})
+
             #build the plugin
-            if buildPlugin(device) is False:
+            if buildPlugin(device, type) is False:
                 socketio.emit('response', {'data': 'Failed to build plugin', 'type': 'error'})
                 return "ok"
             
             #compress the plugin
-            if compressPlugin(brand, name) is False:
+            if compressPlugin(brand, name, type) is False:
                 socketio.emit('response', {'data': 'Failed to compress plugin', 'type': 'error'})
                 return "ok"
 
-            if getBase64() is False:
+            if getBase64(type) is False:
                 socketio.emit('response', {'data': 'Failed to get base64', 'type': 'error'})
                 return "ok"
             
@@ -153,6 +223,14 @@ def files():
 def test_connect():
     emit('response', {'data': 'Connected'})
 
+def find_cv_ports(ports, cvPorts):
+    for port in ports:
+        if port['type'] == 'signal':
+            if 'meta' in port and 'cv' in port['meta'] and port['meta']['cv'] == True:
+                cvPorts.append(1)
+            else:
+                cvPorts.append(0)
+
 def prepareDirectory(directory):
     #delete existing files and folders in the directory
     dirList = ['plugins', 'custom-ttl','presets','bin']
@@ -168,25 +246,25 @@ def prepareDirectory(directory):
                 except Exception as e:
                     socketio.emit('response', {'data': 'Failed to delete %s. Reason: %s' % (file_path, e), type: 'error'})
 
-def compressPlugin(brand, name):
+def compressPlugin(brand, name, type):
     #build the plugin
-    exportPath = '/home/modgen/mod-plugin-builder/max-gen-plugins/bin/max-gen-plugin.lv2'
+    exportPath = '/home/modgen/mod-plugin-builder/max-'+type+'-plugins/bin/max-'+type+'-plugin.lv2'
     socketio.emit('response', {'data': 'Compressing Plugin'})
     if not os.path.exists(exportPath):
         socketio.emit('response', {'data': 'Plugin not found', 'type': 'error'})
         return False
     #rename the plugin
     pluginName = snakecase(brand)+'-'+snakecase(name)+'.lv2'
-    pluginPath = '/home/modgen/mod-plugin-builder/max-gen-plugins/bin/'+pluginName
+    pluginPath = '/home/modgen/mod-plugin-builder/max-'+type+'-plugins/bin/'+pluginName
     os.rename(exportPath, pluginPath)
-    command = 'tar zhcf max-gen-plugin.tar.gz '+pluginName
+    command = 'tar zhcf max-'+type+'-plugin.tar.gz '+pluginName
     try:
         process = subprocess.Popen(
             shlex.split(command),
             shell=False, 
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            cwd=r'/home/modgen/mod-plugin-builder/max-gen-plugins/bin'
+            cwd=r'/home/modgen/mod-plugin-builder/max-'+type+r'-plugins/bin'
             )
     except:
         socketio.emit('response', {'data': 'ERROR {} while running {}'.format(sys.exc_info()[1], command), 'type': 'error'})
@@ -206,11 +284,11 @@ def compressPlugin(brand, name):
 
 #convert the tar to base64 and send it to the client
 
-def getBase64():
-    if not os.path.exists('/home/modgen/mod-plugin-builder/max-gen-plugins/bin/max-gen-plugin.tar.gz'):
+def getBase64(type):
+    if not os.path.exists('/home/modgen/mod-plugin-builder/max-'+type+'-plugins/bin/max-'+type+'-plugin.tar.gz'):
         socketio.emit('response', {'data': 'Compressed plugin file not found', 'type': 'error'})
         return False
-    with open('/home/modgen/mod-plugin-builder/max-gen-plugins/bin/max-gen-plugin.tar.gz', 'rb') as file:
+    with open('/home/modgen/mod-plugin-builder/max-'+type+'-plugins/bin/max-'+type+'-plugin.tar.gz', 'rb') as file:
         encoded = base64.encodebytes(file.read()).decode('utf-8')
         socketio.emit('response', {'data': encoded, 'type': 'plugin'})
     return True
@@ -228,7 +306,7 @@ def saveSettings():
     with open('settings.ini', 'w') as configfile:
         config.write(configfile)
 
-def buildPlugin(target):
+def buildPlugin(target, type):
     #build the plugin
     socketio.emit('response', {'data': 'Building Plugin'})
     command = 'make ' + target
@@ -238,7 +316,7 @@ def buildPlugin(target):
             shell=False, 
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            cwd=r'/home/modgen/mod-plugin-builder/max-gen-plugins/'
+            cwd=r'/home/modgen/mod-plugin-builder/max-'+type+r'-plugins/'
             )
     except:
         socketio.emit('response', {'data': 'ERROR {} while running {}'.format(sys.exc_info()[1], command), 'type': 'error'})
@@ -251,8 +329,7 @@ def buildPlugin(target):
         if output:
             socketio.emit('response', {'data': output.strip().decode(), 'type': 'build'})
         if errors:
-            socketio.emit('response', {'data': errors.strip().decode(), 'type': 'error'})
-            return False
+            socketio.emit('response', {'data': errors.strip().decode(), 'type': 'warning'})
     socketio.emit('response', {'data': 'Plugin built successfully', 'type': 'success'})
     return True
 

@@ -15,7 +15,7 @@
                 <form method="post" id="upload-form" action="/" enctype="multipart/form-data">
                     <div class="mb-3">
                         <label for="files" class="form-label">Plugin files</label>
-                        <input type="file" class="form-control" name="files[]" id="files" accept=".h,.cpp" multiple required>
+                        <input type="file" class="form-control" name="files[]" id="files" accept=".h,.cpp,.json" multiple required>
                     </div>
                     <div class="mb-3">
                         <label for="name" class="form-label">Plugin name</label>
@@ -24,16 +24,6 @@
                     <div class="mb-3">
                         <label for="brand" class="form-label">Plugin brand</label>
                         <input type="text" class="form-control" name="brand" value="{{brand}}" id="brand" placeholder="Plugin brand">
-                    </div>
-                    <div class="row mb-3">
-                        <div class="col-6">
-                            <label for="inputs" class="form-label">Number of inputs</label>
-                            <input type="number" min="0" step="1" class="form-control" name="inputs" value="{{inputs}}" id="inputs" placeholder="2">
-                        </div>
-                        <div class="col-6">
-                            <label for="outputs" class="form-label">Number of outputs</label>
-                            <input type="number" min="0" step="1" class="form-control" name="outputs" value="{{outputs}}" id="outputs" placeholder="2">
-                        </div>
                     </div>
                     <div class="mb-3">
                         <label for="category" class="form-label">Plugin category</label>
@@ -97,7 +87,7 @@
             }).then((response) => {
                 $('#log').append('<div class="mb-1 text-white">✓ Plugin should have been uploaded to device</div>');
             }).catch((error) => {
-                $('#log').append('<div class="mb-1 text-danger">✗ ' + error.message + '. Is your device connected and reachable?</div>');
+                $('#log').append('<div class="mb-1 text-danger">✗ ' + error.message + '. Is your device connected and reachable? <a class="retry-upload">Retry</a></div>');
             });
         }
 
@@ -108,11 +98,15 @@
                     case 'error':
                         $('#log').append('<div class="mb-1 text-danger">✗ ' + msg.data + '</div>');
                         break;
+                    case 'warning':
+                        $('#log').append('<div class="mb-1 text-warning">' + msg.data + '</div>');
+                        break;
                     case 'success':
                         $('#log').append('<div class="mb-1 text-white">✓ ' + msg.data + '</div>');
                         break;
                     case 'plugin':
                         $('#log').append('<div class="mb-1 text-white">✓ Trying to upload to device...</div>');
+                        window.pluginData = msg.data;
                         uploadToDevice(msg.data);
                         break;
                     default:
@@ -122,7 +116,11 @@
                 $('#log').parent().animate({scrollTop: $('#log')[0].scrollHeight}, 200);
             });
 
-            $("#files").click(function(){
+            $(document).on('click', '.retry-upload', function() {
+                uploadToDevice(window.pluginData);
+            });
+
+            /*$("#files").click(function(){
                 $(this).val("");
             });
 
@@ -139,6 +137,7 @@
                             var regexOut = /int gen_kernel_numouts = (\d);/gm;
                             var inputs = regexIn.exec(content);
                             var outputs = regexOut.exec(content);
+                            //TODO: RNBO equivalent regex would be Index getNumInputChannels\(\) const {\n\s{4}return\s(\d{1,3});\n}
                             if (inputs != null && outputs != null) {
                                 $('#log').append('<div class="mb-1 text-white">✓ Plugin has ' + inputs[1] + ' inputs and ' + outputs[1] + ' outputs</div>');
                                 $('#inputs').val(inputs[1]);
@@ -149,7 +148,7 @@
                         }
                     }
                 }
-            });
+            }); */
         });
 
         $( "#upload-form" ).on( "submit", function( event ) {
@@ -163,8 +162,6 @@
             formData.append('uri', $('#uri').val());
             formData.append('device', $('#device').val());
             formData.append('ip', $('#ip').val());
-            formData.append('inputs', $('#inputs').val());
-            formData.append('outputs', $('#outputs').val());
             formData.append('save-settings', $('#save-settings').is(':checked'));
             for (const file of fileInput.files) {
                 formData.append('files', file);

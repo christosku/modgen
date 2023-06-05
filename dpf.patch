@@ -1,0 +1,17 @@
+diff --git a/Makefile.base.mk b/Makefile.base.mk
+index 6cb2b9cf..f41b1bd4 100644
+--- a/Makefile.base.mk
++++ b/Makefile.base.mk
+@@ -734,10 +734,10 @@ modduo:
+ 	$(MAKE) $(call MOD_ENVIRONMENT,$(MOD_WORKDIR)/modduo-static,arm-mod-linux-gnueabihf.static,arm)
+ 
+ modduox:
+-	$(MAKE) $(call MOD_ENVIRONMENT,$(MOD_WORKDIR)/modduox-static,aarch64-mod-linux-gnueabi.static,aarch64)
++	$(MAKE) $(call MOD_ENVIRONMENT,$(MOD_WORKDIR)/modduox-new,aarch64-modaudio-linux-gnueabi,aarch64)
+ 
+ moddwarf:
+-	$(MAKE) $(call MOD_ENVIRONMENT,$(MOD_WORKDIR)/moddwarf,aarch64-mod-linux-gnu,aarch64)
++	$(MAKE) $(call MOD_ENVIRONMENT,$(MOD_WORKDIR)/moddwarf-new,aarch64-modaudio-linux-gnu,aarch64)
+ 
+ modpush:
+ 	tar -C bin -cz $(subst bin/,,$(wildcard bin/*.lv2)) | base64 | curl -F 'package=@-' http://192.168.51.1/sdk/install && echo
